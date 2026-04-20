@@ -5,6 +5,13 @@ const https = require('https');   // <-- added
 const { createServer } = require('http');
 const WebSocket = require('ws');
 
+const path = require('path');
+
+// Create images folder if not exists
+const imagesDir = path.join(__dirname, 'images');
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir);
+}
 
 
 const app = express();
@@ -130,6 +137,43 @@ mqttClient.on('message', (topic, message) => {
 
     broadcast({ type: 'emergency', message: message.toString() });
   }
+});
+
+// ====================== ESP32-CAM PHOTO UPLOAD ======================
+app.post('/upload-image', express.raw({ type: 'image/jpeg', limit: '2mb' }), (req, res) => {
+  if (!req.body || req.body.length === 0) {
+    return res.status(400).send('No image received');
+  }
+
+  const filename = `motion_${Date.now()}.jpg`;
+  const filePath = path.join(imagesDir, filename);
+
+  fs.writeFileSync(filePath, req.body);
+  console.log(`✅ Motion photo saved: ${filename}`);
+
+  // Publish MQTT alert (so your React app gets notified)
+  const alertPayload = {
+    alert: "motion",
+    status: "detected",
+    location: "community_kiosk",
+    image: filename,
+    timestamp: new Date().toISOString()
+  };
+
+  // mqttClient.publish('alerts/motion', alertPayload);
+  // console.log('📸 Motion alert published to alerts/motion');
+
+  broadcast({
+      type: 'motion',
+      alert: 'motion',
+      status: 'detected',
+      location: 'community_kiosk',
+      image: alertPayload.image,
+      imageUrl: `http://YOUR_BACKEND_IP:3000/images/${alertPayload.image}`,   // ← CHANGE THIS IP
+      timestamp: alertPayload.timestamp
+    });
+
+  res.send('Photo received');
 });
 
 app.get('/logs', (req, res) => res.json({ logs }));

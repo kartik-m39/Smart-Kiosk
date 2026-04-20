@@ -31,7 +31,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 HardwareSerial gpsSerial(2);        // UART2
 TinyGPSPlus gps;
 
-const float THEFT_RADIUS_METERS = 1.0;   // ← Change this to whatever radius you want
+const float THEFT_RADIUS_METERS = 1.0;   // ← Change later if needed
 float homeLat = 0.0;
 float homeLon = 0.0;
 bool homeSet = false;
@@ -72,7 +72,6 @@ void setup() {
 
   Wire.begin(21, 22);
 
-  // OLED
   display.begin();
 
   lcd.init();
@@ -86,13 +85,12 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   Serial.println("Button on GPIO27 ready (pull-up internal)");
 
-  // Buzzer + Fire Sensor Setup
   pinMode(FIRE_SENSOR_PIN, INPUT);
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
   Serial.println("✅ Fire sensor (GPIO26) + Buzzer (GPIO25) ready");
 
-  // === BUZZER TEST ===
+  // Buzzer test
   Serial.println("🔊 Testing buzzer - should beep 5 times...");
   for (int i = 0; i < 5; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
@@ -102,7 +100,7 @@ void setup() {
   }
   Serial.println("✅ Buzzer test finished");
 
-  // === GPS NEO-6M Initialization ===
+  // GPS
   gpsSerial.begin(9600, SERIAL_8N1, 16, 17);
   Serial.println("✅ NEO-6M GPS initialized on UART2 (pins 16/17). Awaiting satellite fix...");
 
@@ -111,7 +109,6 @@ void setup() {
   MQ135.setA(110.47);
   MQ135.setB(-2.862);
   MQ135.init();
-
   Serial.print("Calibrating MQ135");
   float calcR0 = 0;
   for (int i = 1; i <= 10; i++) {
@@ -177,7 +174,7 @@ void loop() {
   if (!client.connected()) reconnect();
   client.loop();
 
-  // === PUBLISH every 20 seconds (now only temp, humidity, CO2) ===
+  // === PUBLISH every 20 seconds (temp + humidity + CO2) ===
   static unsigned long lastMsg = 0;
   if (millis() - lastMsg > 20000) {
     lastMsg = millis();
@@ -197,20 +194,13 @@ void loop() {
 
       lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print("T:");
-      lcd.print(t, 1);
-      lcd.print("C  H:");
-      lcd.print(h, 1);
-      lcd.print("%");
-
+      lcd.print("T:"); lcd.print(t, 1); lcd.print("C  H:"); lcd.print(h, 1); lcd.print("%");
       lcd.setCursor(0, 1);
-      lcd.print("CO2:");
-      lcd.print(co2_ppm, 1);
-      lcd.print("ppm");
+      lcd.print("CO2:"); lcd.print(co2_ppm, 1); lcd.print("ppm");
     }
   }
 
-  // OLED (kept as-is)
+  // OLED
   if (millis() - lastDisplayUpdate > 500) {
     display.clearBuffer();
     display.setFont(u8g2_font_ncenB14_tr);
@@ -219,7 +209,7 @@ void loop() {
     lastDisplayUpdate = millis();
   }
 
-  // ============== FIRE DETECTION + BUZZER ==============
+  // ============== FIRE DETECTION + BUZZER + GPS COORDINATES ==============
   int fireDetected = digitalRead(FIRE_SENSOR_PIN);
   if (fireDetected == LOW) {
     digitalWrite(BUZZER_PIN, HIGH);
@@ -227,9 +217,19 @@ void loop() {
     static unsigned long lastFireAlert = 0;
     if (millis() - lastFireAlert > 10000) {
       lastFireAlert = millis();
-      String alertPayload = "{\"alert\":\"fire\",\"status\":\"detected\",\"location\":\"community_kiosk\"}";
+
+      // === FIRE ALERT WITH GPS COORDINATES (for testing) ===
+      String alertPayload = "{\"alert\":\"fire\",\"status\":\"detected\",\"location\":\"community_kiosk\"";
+      if (gps.location.isValid()) {
+        alertPayload += ",\"lat\":" + String(gps.location.lat(), 6) +
+                        ",\"lon\":" + String(gps.location.lng(), 6);
+      } else {
+        alertPayload += ",\"gps\":\"no_fix\"";
+      }
+      alertPayload += "}";
+
       client.publish("alerts/fire", alertPayload.c_str());
-      Serial.println("🚨 FIRE DETECTED → Published to alerts/fire");
+      Serial.println("🚨 FIRE DETECTED → Published to alerts/fire (with GPS coords)");
     }
   } else {
     digitalWrite(BUZZER_PIN, LOW);
@@ -265,19 +265,34 @@ void loop() {
           client.publish("alerts/theft", theftPayload.c_str(), 1);
           Serial.println("🚨 THEFT ALERT: Kiosk moved beyond radius!");
 
-          // Short alarm on buzzer
           for (int i = 0; i < 3; i++) {
-            digitalWrite(BUZZER_PIN, HIGH);
-            delay(200);
-            digitalWrite(BUZZER_PIN, LOW);
-            delay(200);
+            digitalWrite(BUZZER_PIN, HIGH); delay(200);
+            digitalWrite(BUZZER_PIN, LOW);  delay(200);
           }
         }
       }
     }
   }
 
-  // ====================== EMERGENCY BUTTON (GPIO 27) ======================
+  // ====================== GPS DEBUG (shows every 5 seconds) ======================
+  static unsigned long lastGpsDebug = 0;
+  if (millis() - lastGpsDebug > 10000) {
+    lastGpsDebug = millis();
+    Serial.print("GPS | Sats: ");
+    Serial.print(gps.satellites.value());
+    Serial.print(" | Valid fix: ");
+    Serial.print(gps.location.isValid() ? "YES" : "NO");
+    if (gps.location.isValid()) {
+      Serial.print(" | Lat: "); Serial.print(gps.location.lat(), 6);
+      Serial.print(" Lon: "); Serial.print(gps.location.lng(), 6);
+    } else {
+      Serial.print(" | Age of last fix: "); Serial.print(gps.location.age());
+      Serial.print(" ms");
+    }
+    Serial.println();
+  }
+
+  // ====================== EMERGENCY BUTTON ======================
   static unsigned long lastButtonPress = 0;
   if (digitalRead(BUTTON_PIN) == LOW && (millis() - lastButtonPress > 500)) {
     lastButtonPress = millis();
