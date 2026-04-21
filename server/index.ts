@@ -156,7 +156,7 @@ app.post('/upload-image', express.raw({ type: 'image/jpeg', limit: '2mb' }), (re
     alert: "motion",
     status: "detected",
     location: "community_kiosk",
-    image: filename,
+    image: req.body,
     timestamp: new Date().toISOString()
   };
 
@@ -169,7 +169,7 @@ app.post('/upload-image', express.raw({ type: 'image/jpeg', limit: '2mb' }), (re
       status: 'detected',
       location: 'community_kiosk',
       image: alertPayload.image,
-      imageUrl: `http://YOUR_BACKEND_IP:3000/images/${alertPayload.image}`,   // ← CHANGE THIS IP
+      imageUrl: `https://smart-kiosk-7ybc.onrender.com/images/${alertPayload.image}`,   // ← CHANGE THIS IP
       timestamp: alertPayload.timestamp
     });
 
