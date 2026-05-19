@@ -12,7 +12,7 @@ export default function HealthScanPage() {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://kwf1lz9w-3000.inc1.devtunnels.ms/");
+    const ws = new WebSocket("wss://kwf1lz9w-3000.inc1.devtunnels.ms/");
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
