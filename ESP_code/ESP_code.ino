@@ -27,6 +27,9 @@ const int MQ135_PIN = 34;
 MQUnifiedsensor MQ135("ESP-32", 3.3, 12, MQ135_PIN, "MQ-135");
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
+#define HEALTH_BUTTON 33
+const char* healthTopic = "health/scan";
+
 // ====================== GPS ANTI-THEFT ======================
 HardwareSerial gpsSerial(2);        // UART2
 TinyGPSPlus gps;
@@ -69,6 +72,9 @@ void setup() {
   dht.begin();
   pinMode(MQ135_PIN, INPUT);
   setup_wifi();
+
+  pinMode(HEALTH_BUTTON, INPUT_PULLUP);
+  Serial.println("✅ Health button ready on GPIO33");
 
   Wire.begin(21, 22);
 
@@ -171,6 +177,10 @@ float haversine(float lat1, float lon1, float lat2, float lon2) {
 }
 
 void loop() {
+  Serial.print("Health Button State: ");
+Serial.println(digitalRead(HEALTH_BUTTON));
+delay(300);
+
   if (!client.connected()) reconnect();
   client.loop();
 
@@ -310,6 +320,51 @@ void loop() {
       digitalWrite(BUZZER_PIN, LOW);
     }
   }
+
+  // max sensor
+  static bool lastState = HIGH;
+static bool scanning = false;
+static unsigned long scanStart = 0;
+
+bool currentState = digitalRead(HEALTH_BUTTON);
+
+// BUTTON PRESSED
+if(lastState == HIGH && currentState == LOW && !scanning){
+
+  Serial.println("🫀 Health Scan Started");
+
+  scanning = true;
+  scanStart = millis();
+
+  // LCD MESSAGE
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Place finger on");
+  lcd.setCursor(0,1);
+  lcd.print("sensor...");
+}
+
+// WAIT 15s (NON-BLOCKING)
+if(scanning && millis() - scanStart > 15000){
+
+  Serial.println("📡 Publishing health scan");
+
+  if(client.publish("health/scan","start")){
+    Serial.println("✅ Health scan sent!");
+  }else{
+    Serial.println("❌ Publish failed");
+  }
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Scan QR Code");
+  lcd.setCursor(0,1);
+  lcd.print("for results");
+
+  scanning = false;
+}
+
+lastState = currentState;
 
   delay(500); 
 }

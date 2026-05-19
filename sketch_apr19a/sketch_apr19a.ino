@@ -25,7 +25,7 @@ const char* ssid     = "Connect";
 const char* password = "newkong61";
 
 // ====== BACKEND URL ======
-const char* serverURL = "https://smart-kiosk-7ybc.onrender.com/upload-image";
+const char* serverURL = "https://kwf1lz9w-3000.inc1.devtunnels.ms/upload-image";
 
 // ====== MOTION DETECTION TUNING ======
 const int      PIXEL_DIFF_THRESHOLD   = 30;    // per-channel sensitivity (0–255)

@@ -7,7 +7,6 @@ const WebSocket = require('ws');
 
 const path = require('path');
 
-// Create images folder if not exists
 const imagesDir = path.join(__dirname, 'images');
 if (!fs.existsSync(imagesDir)) {
   fs.mkdirSync(imagesDir);
@@ -18,7 +17,30 @@ const app = express();
 const port = 3000;
 
 const server = createServer(app);
-const wss = new WebSocket.Server({ server });  // ← same server, no extra port
+const wss = new WebSocket.Server({ server }); 
+
+const locations = [
+  { lat: 30.515944, lng: 76.657806 }, // Main point
+  { lat: 30.516012, lng: 76.657842 },
+  { lat: 30.515881, lng: 76.657913 },
+  { lat: 30.516105, lng: 76.657701 },
+  { lat: 30.515792, lng: 76.657665 },
+  { lat: 30.516188, lng: 76.657954 },
+  { lat: 30.515963, lng: 76.658021 },
+  { lat: 30.515846, lng: 76.657742 },
+  { lat: 30.516074, lng: 76.657589 },
+  { lat: 30.515721, lng: 76.657988 }
+];
+
+const getRandomLocation = () => {
+  return locations[Math.floor(Math.random() * locations.length)];
+};
+
+const fakeVitals = Array.from({ length: 100 }, () => ({
+  bpm: Math.floor(Math.random()*30)+70,   // 70–100 BPM
+  spo2: Math.floor(Math.random()*3)+97    // 97–100 %
+}));
+
 
 const broadcast = (data) => wss.clients.forEach(client => {
   if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(data));
@@ -36,7 +58,7 @@ const mqttClient = mqtt.connect('mqtts://ad245d63a3cb48ffbfc8a82d5def699e.s1.eu.
 const topic = 'sensors/esp32/dht';
 
 // ThingSpeak (create a free channel with 3 fields: Temp, Humidity, Gas)
-const thingspeakApiKey = process.env.THINKSPEAK_WRITE_APIKEY;   // ← put your key here
+const thingspeakApiKey = process.env.THINKSPEAK_WRITE_APIKEY;   
 let lastThingSpeakUpdate = 0;
 
 // Log storage
@@ -77,6 +99,10 @@ mqttClient.on('connect', () => {
   mqttClient.subscribe('alerts/emergency', (err) => {
     if (!err) console.log('Subscribed to alerts/emergency for emergency button');
   });
+
+  mqttClient.subscribe('health/scan', () => {
+    console.log('Subscribed to health scan');
+  });
 });
 
 mqttClient.on('message', (topic, message) => {
@@ -112,31 +138,41 @@ mqttClient.on('message', (topic, message) => {
     // ================== NEW: FIRE ALERT HANDLER ==================
     console.log('🚨 FIRE ALERT RECEIVED:', message.toString());
 
-    // TODO: Send notification to your React app here
-    // Examples:
-    // 1. Firebase (recommended - already in your project description)
-    //    admin.messaging().sendToTopic('fire_alerts', { notification: { title: "🔥 Fire Detected!", body: "Check kiosk immediately" }})
-    //
-    // 2. If your React app listens via WebSocket/SSE, emit here
-    // 3. Or just log for now and poll /logs in React
-    broadcast({ type: 'fire', message: message.toString() });
+    broadcast({ type: 'fire', message: message.toString(), location: getRandomLocation() });
 
-    // For now (minimal):
+
     console.log("📲 Notification would be sent to React app / Firebase right now");
   } else if (topic === 'alerts/theft') {
     console.log('🚨 THEFT ALERT RECEIVED:', message.toString());
     console.log("📲 Notification would be sent to React app / Firebase right now (THEFT)");
-    // TODO: send push notification exactly like fire
 
-    broadcast({ type: 'theft', message: message.toString() });
+    broadcast({ type: 'theft', message: message.toString(), location: getRandomLocation() });
 
   } else if (topic === 'alerts/emergency') {
     console.log('🚨 EMERGENCY ALERT RECEIVED:', message.toString());
     console.log("📲 Notification would be sent to React app / Firebase right now (EMERGENCY)");
-    // TODO: send push notification exactly like fire
 
-    broadcast({ type: 'emergency', message: message.toString() });
-  }
+    broadcast({ type: 'emergency', message: message.toString(), location: getRandomLocation() });
+  } else if(topic === 'health/scan') {
+
+  console.log("🫀 Fake health scan triggered");
+
+  // simulate processing delay
+  setTimeout(() => {
+
+    const result =
+      fakeVitals[Math.floor(Math.random()*fakeVitals.length)];
+      console.log(result)
+
+    broadcast({
+      type: 'health',
+      bpm: result.bpm,
+      spo2: result.spo2,
+      timestamp: new Date().toISOString()
+    });
+
+  }, 5000); // fake analysis delay
+}
 });
 
 // ====================== ESP32-CAM PHOTO UPLOAD ======================
@@ -151,11 +187,11 @@ app.post('/upload-image', express.raw({ type: 'image/jpeg', limit: '2mb' }), (re
   fs.writeFileSync(filePath, req.body);
   console.log(`✅ Motion photo saved: ${filename}`);
 
-  // Publish MQTT alert (so your React app gets notified)
+  // Publish MQTT alert 
   const alertPayload = {
     alert: "motion",
     status: "detected",
-    location: "community_kiosk",
+    location: getRandomLocation(),
     image: req.body,
     timestamp: new Date().toISOString()
   };
@@ -167,9 +203,9 @@ app.post('/upload-image', express.raw({ type: 'image/jpeg', limit: '2mb' }), (re
       type: 'motion',
       alert: 'motion',
       status: 'detected',
-      location: 'community_kiosk',
+      location: getRandomLocation(),
       image: alertPayload.image,
-      imageUrl: `https://smart-kiosk-7ybc.onrender.com/images/${alertPayload.image}`,   // ← CHANGE THIS IP
+      imageUrl: `https://smart-kiosk-7ybc.onrender.com/images/${alertPayload.image}`,   
       timestamp: alertPayload.timestamp
     });
 
